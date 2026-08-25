@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RIS Marketing OS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="eyebrow">Rayong Isuzu Sales</div>
+      <h2>Marketing OS</h2>
+    </div>
+
+    <nav id="navList">
+      <div class="nav-section">
+        <div class="nav-item active" data-view="overview">📊 &nbsp;ภาพรวม</div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">วิเคราะห์ผล</div>
+        <div class="nav-item" data-view="analytics">📈 &nbsp;Analytics</div>
+        <div class="nav-item" data-view="competitors">🏁 &nbsp;ติดตามคู่แข่ง</div>
+        <div class="nav-item" data-view="trends">🔥 &nbsp;เทรนด์วันนี้</div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">คอนเทนท์</div>
+        <div class="nav-item" data-view="hooks">🧠 &nbsp;คลัง Hook</div>
+        <div class="nav-item" data-view="calendar">🗓️ &nbsp;ปฏิทิน Content</div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">โฆษณา</div>
+        <div class="nav-item" data-view="ads">📣 &nbsp;Ads FB/IG</div>
+        <div class="nav-item" data-view="campaigns">💰 &nbsp;Campaign ROI</div>
+      </div>
+
+      <div class="nav-section" id="adminNavSection" style="display:none;">
+        <div class="nav-section-title">ผู้ดูแลระบบ</div>
+        <div class="nav-item" data-view="admin-users">👤 &nbsp;จัดการผู้ใช้</div>
+        <div class="nav-item" data-view="admin-branches">🏢 &nbsp;จัดการสาขา</div>
+      </div>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="user-chip" id="userChip">—<small id="userRoleLine"></small></div>
+      <span class="logout-link" onclick="logout()">ออกจากระบบ</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="viewTitle">ภาพรวม</h1>
+        <div class="sub" id="viewSub">สรุปผลการตลาดดิจิทัล ระยองอีซูซุเซลส์</div>
+      </div>
+      <select class="branch-select" id="branchSelect"></select>
+    </div>
+
+    <div id="viewRoot"><!-- module content injected here --></div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+<script>
+const token = requireAuth();
+let currentUser = getCachedUser();
+let currentBranch = 'ALL';
+let branches = [];
+
+const VIEW_META = {
+  overview:    { title: 'ภาพรวม',          sub: 'สรุปผลการตลาดดิจิทัล ระยองอีซูซุเซลส์' },
+  analytics:   { title: 'Analytics',        sub: 'ยอดวิว ยอดเอนเกจ ทุกแพลตฟอร์มในหน้าเดียว' },
+  competitors: { title: 'ติดตามคู่แข่ง',    sub: 'ดีลเลอร์อีซูซุ / คู่แข่งกระบะในพื้นที่' },
+  trends:      { title: 'เทรนด์วันนี้',     sub: 'ประเด็น/เทรนด์ที่นำมาทำคอนเทนท์ได้' },
+  hooks:       { title: 'คลัง Hook',        sub: 'ไอเดียหัวข้อ/สคริปต์ที่ใช้ซ้ำได้' },
+  calendar:    { title: 'ปฏิทิน Content',   sub: 'แผนโพสต์และตารางเวลาแต่ละแพลตฟอร์ม' },
+  ads:         { title: 'Ads FB/IG',        sub: 'ผลโฆษณา Facebook และ Instagram' },
+  campaigns:   { title: 'Campaign ROI',     sub: 'ต้นทุน/ราย/ROAS แยกตามแคมเปญ' },
+  'admin-users':    { title: 'จัดการผู้ใช้', sub: 'เพิ่ม แก้ไข ระงับ หรือรีเซ็ตรหัสผ่านผู้ใช้งาน' },
+  'admin-branches': { title: 'จัดการสาขา',  sub: 'แก้ไขชื่อสาขาและสถานะการใช้งาน' }
+};
+
+function init() {
+  if (!currentUser) {
+    api('validateSession', { token }).then(res => {
+      if (!res.ok) { window.location.href = 'index.html'; return; }
+      currentUser = res.user; setCachedUser(res.user); afterAuth();
+    });
+  } else {
+    afterAuth();
+  }
+}
+
+function afterAuth() {
+  document.getElementById('userChip').innerHTML =
+    (currentUser.fullName || currentUser.username) +
+    '<small>' + roleLabel(currentUser.role) + (currentUser.branch && currentUser.branch !== 'ALL' ? ' · ' + currentUser.branch : '') + '</small>';
+
+  if (currentUser.role === 'Admin') document.getElementById('adminNavSection').style.display = '';
+
+  api('admin_listBranches', { token }).then(res => {
+    if (res.ok) { branches = res.branches; populateBranchSelect(); }
+  });
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => switchView(item.dataset.view));
+  });
+  document.getElementById('branchSelect').addEventListener('change', e => {
+    currentBranch = e.target.value;
+    renderCurrentView();
+  });
+
+  switchView('overview');
+}
+
+function roleLabel(role) {
+  return { Admin: 'ผู้ดูแลระบบ', DGM: 'ทีม DGM', Branch: 'ประจำสาขา' }[role] || role;
+}
+
+function populateBranchSelect() {
+  const sel = document.getElementById('branchSelect');
+  const isBranchUser = currentUser.role === 'Branch' && currentUser.branch !== 'ALL';
+  const opts = ['<option value="ALL">ภาพรวมทุกสาขา</option>']
+    .concat(branches.filter(b => b.Active).map(b => `<option value="${b.Code}">${b.NameTH || b.Code}</option>`));
+  sel.innerHTML = opts.join('');
+  if (isBranchUser) {
+    sel.value = currentUser.branch;
+    sel.disabled = true;
+    currentBranch = currentUser.branch;
+  }
+}
+
+let activeView = 'overview';
+function switchView(view) {
+  activeView = view;
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.view === view));
+  const meta = VIEW_META[view];
+  document.getElementById('viewTitle').textContent = meta.title;
+  document.getElementById('viewSub').textContent = meta.sub;
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  const root = document.getElementById('viewRoot');
+  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  switch (activeView) {
+    case 'overview': return renderOverview(root);
+    case 'analytics': return renderStubModule(root, 'getAnalytics', 'Analytics', '📈', 'ยังไม่เชื่อมข้อมูล Analytics จริง', 'เชื่อมต่อ Facebook/Instagram Insights API เพื่อดึงยอดวิว ยอดไลค์ เอนเกจเมนต์อัตโนมัติทุกเช้า');
+    case 'competitors': return renderStubModule(root, 'getCompetitors', 'ติดตามคู่แข่ง', '🏁', 'ยังไม่ได้ตั้งค่ารายชื่อคู่แข่งที่ติดตาม', 'เพิ่มเพจ/บัญชีของดีลเลอร์อีซูซุอื่นและคู่แข่งกระบะ (Hilux, Ranger) เพื่อเริ่มติดตามผลงาน');
+    case 'trends': return renderStubModule(root, 'getTrends', 'เทรนด์วันนี้', '🔥', 'ยังไม่เชื่อมแหล่งข่าว/เทรนด์', 'ตั้งค่าแหล่งข้อมูลข่าวยานยนต์และโปรโมชั่นคู่แข่งเพื่อสรุปให้ทุกเช้า');
+    case 'hooks': return renderStubModule(root, 'getHooks', 'คลัง Hook', '🧠', 'คลัง Hook ยังว่างอยู่', 'เริ่มเพิ่ม Hook ที่ใช้ได้ผลดี หรือดึงจากคอนเทนท์เก่าที่เคยเวิร์ก');
+    case 'calendar': return renderStubModule(root, 'getContentCalendar', 'ปฏิทิน Content', '🗓️', 'ยังไม่มีแผนโพสต์ในปฏิทิน', 'เริ่มวางแผนโพสต์รายสัปดาห์ต่อแพลตฟอร์มและสาขา', { branch: currentBranch });
+    case 'ads': return renderStubModule(root, 'getAds', 'Ads FB/IG', '📣', 'ยังไม่เชื่อมข้อมูลโฆษณา', 'เชื่อมต่อ Meta Ads API เพื่อดึงยอดใช้จ่ายและผลลัพธ์อัตโนมัติ', { branch: currentBranch });
+    case 'campaigns': return renderStubModule(root, 'getCampaigns', 'Campaign ROI', '💰', 'ยังไม่มีข้อมูลแคมเปญ', 'เพิ่มแคมเปญเพื่อเริ่มติดตามต้นทุนต่อราย และ ROAS', { branch: currentBranch });
+    case 'admin-users': return renderAdminUsers(root);
+    case 'admin-branches': return renderAdminBranches(root);
+  }
+}
+
+function renderOverview(root) {
+  root.innerHTML = `
+    <div class="grid grid-3">
+      <div class="card"><h3>สถานะระบบ</h3><div class="stat">Phase 1</div><div class="hint">ระบบ Login/Admin พร้อมใช้งาน · โมดูลข้อมูลรอเชื่อมต่อ</div></div>
+      <div class="card"><h3>สาขาในระบบ</h3><div class="stat">${branches.length || 9}</div><div class="hint">RY · FC · MP · CK · NS · PD · BK · NK · FR</div></div>
+      <div class="card"><h3>ผู้ใช้งาน</h3><div class="stat" id="ovUserCount">—</div><div class="hint">บัญชีที่เปิดใช้งานทั้งหมด</div></div>
+    </div>
+    <div class="section-label"><span class="dot"></span>ขั้นตอนถัดไป</div>
+    <div class="empty-state">
+      <div class="icon">🚧</div>
+      <h4>พร้อมต่อข้อมูลจริงในเฟสถัดไป</h4>
+      <p>เฟสนี้วางโครงหน้าจอและระบบผู้ใช้ครบแล้ว ขั้นต่อไปคือเชื่อม Facebook/Instagram Graph API (มี Page Token พร้อมแล้ว), ตั้งค่าคู่แข่งที่ติดตาม, และเริ่มกรอกแผนคอนเทนท์/แคมเปญราย branch</p>
+    </div>
+  `;
+  api('admin_listUsers', { token }).then(res => {
+    if (res.ok) document.getElementById('ovUserCount').textContent = res.users.filter(u => u.status === 'Active').length;
+  });
+}
+
+function renderStubModule(root, action, label, icon, title, desc, extraPayload) {
+  api(action, Object.assign({ token }, extraPayload || {})).then(res => {
+    root.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">${icon}</div>
+        <h4>${title}</h4>
+        <p>${desc}</p>
+      </div>`;
+  }).catch(() => {
+    root.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h4>เชื่อมต่อไม่สำเร็จ</h4><p>ลองรีเฟรชหน้าอีกครั้ง</p></div>`;
+  });
+}
+
+// ---------- Admin: Users ----------
+
+function renderAdminUsers(root) {
+  root.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button class="btn btn-gold" onclick="openUserModal()">+ เพิ่มผู้ใช้</button>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;">
+      <table>
+        <thead><tr><th>Username</th><th>ชื่อ</th><th>สิทธิ์</th><th>สาขา</th><th>สถานะ</th><th>เข้าระบบล่าสุด</th><th></th></tr></thead>
+        <tbody id="usersTbody"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+  `;
+  loadUsers();
+}
+
+function loadUsers() {
+  api('admin_listUsers', { token }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    const rows = res.users.map(u => `
+      <tr>
+        <td><strong>${u.username}</strong></td>
+        <td>${u.fullName || ''}</td>
+        <td><span class="badge role-${u.role.toLowerCase()}">${roleLabel(u.role)}</span></td>
+        <td>${u.branch}</td>
+        <td><span class="badge ${u.status === 'Active' ? 'active' : 'suspended'}">${u.status === 'Active' ? 'ใช้งานอยู่' : 'ระงับ'}</span></td>
+        <td>${u.lastLogin ? new Date(u.lastLogin).toLocaleString('th-TH') : '—'}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="resetPasswordPrompt('${u.username}')">รีเซ็ตรหัส</button>
+          <button class="btn btn-sm ${u.status === 'Active' ? 'btn-danger' : ''}" onclick="toggleStatus('${u.username}','${u.status}')">${u.status === 'Active' ? 'ระงับ' : 'เปิดใช้งาน'}</button>
+        </td>
+      </tr>`).join('');
+    document.getElementById('usersTbody').innerHTML = rows || '<tr><td colspan="7">ยังไม่มีผู้ใช้</td></tr>';
+  });
+}
+
+function openUserModal() {
+  const branchOpts = branches.map(b => `<option value="${b.Code}">${b.NameTH || b.Code}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>เพิ่มผู้ใช้ใหม่</h3>
+      <div class="field"><label>Username</label><input id="nu_username" placeholder="เช่น somchai.dgm"></div>
+      <div class="field"><label>ชื่อ-นามสกุล</label><input id="nu_fullname"></div>
+      <div class="field"><label>รหัสผ่านเริ่มต้น</label><input id="nu_password" type="text" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
+      <div class="field"><label>สิทธิ์การใช้งาน</label>
+        <select id="nu_role" onchange="document.getElementById('nu_branch_field').style.display = this.value==='Branch'?'block':'none';">
+          <option value="DGM">ทีม DGM (เห็นทุกสาขา)</option>
+          <option value="Branch">ประจำสาขา (เห็นเฉพาะสาขาตัวเอง)</option>
+          <option value="Admin">ผู้ดูแลระบบ</option>
+        </select>
+      </div>
+      <div class="field" id="nu_branch_field"><label>สาขา</label><select id="nu_branch">${branchOpts}</select></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="this.closest('.modal-backdrop').remove()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitNewUser()">บันทึก</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function submitNewUser() {
+  const user = {
+    username: document.getElementById('nu_username').value.trim(),
+    fullName: document.getElementById('nu_fullname').value.trim(),
+    password: document.getElementById('nu_password').value,
+    role: document.getElementById('nu_role').value,
+    branch: document.getElementById('nu_branch').value
+  };
+  api('admin_addUser', { token, user }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    toast('เพิ่มผู้ใช้เรียบร้อย');
+    document.querySelector('.modal-backdrop').remove();
+    loadUsers();
+  });
+}
+
+function resetPasswordPrompt(username) {
+  const pw = prompt('ตั้งรหัสผ่านใหม่สำหรับ ' + username + ' (อย่างน้อย 6 ตัวอักษร)');
+  if (!pw) return;
+  api('admin_resetPassword', { token, username, newPassword: pw }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    toast('รีเซ็ตรหัสผ่านเรียบร้อย');
+  });
+}
+
+function toggleStatus(username, currentStatus) {
+  const newStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
+  api('admin_setStatus', { token, username, status: newStatus }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    toast(newStatus === 'Active' ? 'เปิดใช้งานบัญชีแล้ว' : 'ระงับบัญชีแล้ว');
+    loadUsers();
+  });
+}
+
+// ---------- Admin: Branches ----------
+
+function renderAdminBranches(root) {
+  root.innerHTML = `
+    <div class="card" style="padding:0;overflow:auto;">
+      <table>
+        <thead><tr><th>รหัส</th><th>ชื่อสาขา (ไทย)</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody id="branchTbody"><tr><td colspan="4">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>`;
+  loadBranchesTable();
+}
+
+function loadBranchesTable() {
+  api('admin_listBranches', { token }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    branches = res.branches;
+    const rows = branches.map(b => `
+      <tr>
+        <td><strong>${b.Code}</strong></td>
+        <td><input value="${b.NameTH}" id="bn_${b.Code}" style="padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;"></td>
+        <td><span class="badge ${b.Active ? 'active' : 'suspended'}">${b.Active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</span></td>
+        <td><button class="btn btn-sm" onclick="saveBranchName('${b.Code}')">บันทึก</button></td>
+      </tr>`).join('');
+    document.getElementById('branchTbody').innerHTML = rows;
+  });
+}
+
+function saveBranchName(code) {
+  const nameTH = document.getElementById('bn_' + code).value.trim();
+  api('admin_updateBranch', { token, branch: { code, nameTH } }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    toast('บันทึกชื่อสาขาแล้ว');
+  });
+}
+
+init();
+</script>
+</body>
+</html>

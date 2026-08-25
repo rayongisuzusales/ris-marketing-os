@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เข้าสู่ระบบ — RIS Marketing OS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="eyebrow">Rayong Isuzu Sales · DGM</div>
+      <h1>RIS Marketing OS</h1>
+      <p>ระบบบริหารการตลาดดิจิทัล ระยองอีซูซุเซลส์</p>
+    </div>
+    <div class="login-body">
+      <div id="errBox" class="error-msg" style="display:none;"></div>
+      <form id="loginForm">
+        <div class="field">
+          <label>Username</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn-primary" id="loginBtn">เข้าสู่ระบบ</button>
+      </form>
+      <div class="login-foot">สำหรับพนักงานที่ได้รับสิทธิ์เท่านั้น · ปัญหาการเข้าใช้งานติดต่อ Admin</div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+document.getElementById('loginForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  const errBox = document.getElementById('errBox');
+  errBox.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'กำลังเข้าสู่ระบบ...';
+
+  api('login', {
+    username: document.getElementById('username').value.trim(),
+    password: document.getElementById('password').value
+  }).then(res => {
+    if (!res.ok) {
+      errBox.textContent = res.error || 'เข้าสู่ระบบไม่สำเร็จ';
+      errBox.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'เข้าสู่ระบบ';
+      return;
+    }
+    setToken(res.token);
+    setCachedUser(res.user);
+    window.location.href = 'dashboard.html';
+  }).catch(err => {
+    errBox.textContent = 'เชื่อมต่อระบบไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ต (' + err + ')';
+    errBox.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'เข้าสู่ระบบ';
+  });
+});
+
+// already logged in? skip straight to dashboard
+if (getToken()) {
+  api('validateSession', { token: getToken() }).then(res => {
+    if (res.ok) window.location.href = 'dashboard.html';
+  }).catch(()=>{});
+}
+</script>
+</body>
+</html>
