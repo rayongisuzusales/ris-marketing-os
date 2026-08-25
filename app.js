@@ -2,7 +2,7 @@
  * RIS Marketing OS — shared client logic
  * ใส่ URL ของ Apps Script Web App ที่ deploy แล้ว (ลงท้ายด้วย /exec)
  */
-const API_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzj56Lm8cxH7LWuXab1HArxdbJpltLRqv6daltL4mJ7SHMnR8Ah04yCswxrG9grf5jOXQ/exec';
 
 const BRANCH_LABELS = {
   ALL: 'ภาพรวมทุกสาขา',
