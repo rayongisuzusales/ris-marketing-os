@@ -43,6 +43,7 @@
         <div class="nav-section-title">ผู้ดูแลระบบ</div>
         <div class="nav-item" data-view="admin-users">👤 &nbsp;จัดการผู้ใช้</div>
         <div class="nav-item" data-view="admin-branches">🏢 &nbsp;จัดการสาขา</div>
+        <div class="nav-item" data-view="admin-meta">⚙️ &nbsp;ตั้งค่า Meta API</div>
       </div>
     </nav>
 
@@ -82,7 +83,8 @@ const VIEW_META = {
   ads:         { title: 'Ads FB/IG',        sub: 'ผลโฆษณา Facebook และ Instagram' },
   campaigns:   { title: 'Campaign ROI',     sub: 'ต้นทุน/ราย/ROAS แยกตามแคมเปญ' },
   'admin-users':    { title: 'จัดการผู้ใช้', sub: 'เพิ่ม แก้ไข ระงับ หรือรีเซ็ตรหัสผ่านผู้ใช้งาน' },
-  'admin-branches': { title: 'จัดการสาขา',  sub: 'แก้ไขชื่อสาขาและสถานะการใช้งาน' }
+  'admin-branches': { title: 'จัดการสาขา',  sub: 'แก้ไขชื่อสาขาและสถานะการใช้งาน' },
+  'admin-meta':     { title: 'ตั้งค่า Meta API', sub: 'เชื่อมต่อ Facebook/Instagram/Ads ต่อสาขา, คู่แข่ง, แหล่งข่าว' }
 };
 
 function init() {
@@ -150,15 +152,16 @@ function renderCurrentView() {
   root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
   switch (activeView) {
     case 'overview': return renderOverview(root);
-    case 'analytics': return renderStubModule(root, 'getAnalytics', 'Analytics', '📈', 'ยังไม่เชื่อมข้อมูล Analytics จริง', 'เชื่อมต่อ Facebook/Instagram Insights API เพื่อดึงยอดวิว ยอดไลค์ เอนเกจเมนต์อัตโนมัติทุกเช้า');
-    case 'competitors': return renderStubModule(root, 'getCompetitors', 'ติดตามคู่แข่ง', '🏁', 'ยังไม่ได้ตั้งค่ารายชื่อคู่แข่งที่ติดตาม', 'เพิ่มเพจ/บัญชีของดีลเลอร์อีซูซุอื่นและคู่แข่งกระบะ (Hilux, Ranger) เพื่อเริ่มติดตามผลงาน');
-    case 'trends': return renderStubModule(root, 'getTrends', 'เทรนด์วันนี้', '🔥', 'ยังไม่เชื่อมแหล่งข่าว/เทรนด์', 'ตั้งค่าแหล่งข้อมูลข่าวยานยนต์และโปรโมชั่นคู่แข่งเพื่อสรุปให้ทุกเช้า');
-    case 'hooks': return renderStubModule(root, 'getHooks', 'คลัง Hook', '🧠', 'คลัง Hook ยังว่างอยู่', 'เริ่มเพิ่ม Hook ที่ใช้ได้ผลดี หรือดึงจากคอนเทนท์เก่าที่เคยเวิร์ก');
-    case 'calendar': return renderStubModule(root, 'getContentCalendar', 'ปฏิทิน Content', '🗓️', 'ยังไม่มีแผนโพสต์ในปฏิทิน', 'เริ่มวางแผนโพสต์รายสัปดาห์ต่อแพลตฟอร์มและสาขา', { branch: currentBranch });
-    case 'ads': return renderStubModule(root, 'getAds', 'Ads FB/IG', '📣', 'ยังไม่เชื่อมข้อมูลโฆษณา', 'เชื่อมต่อ Meta Ads API เพื่อดึงยอดใช้จ่ายและผลลัพธ์อัตโนมัติ', { branch: currentBranch });
-    case 'campaigns': return renderStubModule(root, 'getCampaigns', 'Campaign ROI', '💰', 'ยังไม่มีข้อมูลแคมเปญ', 'เพิ่มแคมเปญเพื่อเริ่มติดตามต้นทุนต่อราย และ ROAS', { branch: currentBranch });
+    case 'analytics': return renderAnalytics(root);
+    case 'competitors': return renderCompetitors(root);
+    case 'trends': return renderTrends(root);
+    case 'hooks': return renderHooks(root);
+    case 'calendar': return renderCalendar(root);
+    case 'ads': return renderAds(root);
+    case 'campaigns': return renderCampaigns(root);
     case 'admin-users': return renderAdminUsers(root);
     case 'admin-branches': return renderAdminBranches(root);
+    case 'admin-meta': return renderAdminMeta(root);
   }
 }
 
@@ -181,17 +184,265 @@ function renderOverview(root) {
   });
 }
 
-function renderStubModule(root, action, label, icon, title, desc, extraPayload) {
-  api(action, Object.assign({ token }, extraPayload || {})).then(res => {
+function emptyStateHtml(icon, title, desc) {
+  return `<div class="empty-state"><div class="icon">${icon}</div><h4>${title}</h4><p>${desc}</p></div>`;
+}
+function errorStateHtml() {
+  return `<div class="empty-state"><div class="icon">⚠️</div><h4>เชื่อมต่อไม่สำเร็จ</h4><p>ลองรีเฟรชหน้าอีกครั้ง หรือตรวจสอบการตั้งค่า Meta API</p></div>`;
+}
+function errorsBanner(errors) {
+  if (!errors || !errors.length) return '';
+  return `<div class="card" style="border-color:#f0c3bd;background:#fdecea;margin-bottom:16px;"><strong style="color:var(--danger);">พบข้อผิดพลาดบางส่วน:</strong><ul style="margin:8px 0 0;padding-left:18px;font-size:13px;">${errors.map(e => `<li>${e}</li>`).join('')}</ul></div>`;
+}
+
+// ---------- Analytics ----------
+
+function renderAnalytics(root) {
+  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api('getAnalytics', { token, branch: currentBranch }).then(res => {
+    if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
+    if (!res.ready) { root.innerHTML = emptyStateHtml('📈', 'ยังไม่เชื่อมข้อมูล Analytics', res.reason || 'เชื่อมต่อ Facebook/Instagram ในหน้าตั้งค่า Meta API ก่อน'); return; }
+    const postsRows = res.topPosts.map(p => `
+      <tr>
+        <td>${p.platform}</td>
+        <td>${p.branch}</td>
+        <td>${p.text || '(ไม่มีข้อความ)'}${p.url ? ` — <a href="${p.url}" target="_blank" style="color:var(--navy-700);">เปิดดู</a>` : ''}</td>
+        <td>${p.likes.toLocaleString()}</td>
+        <td>${p.comments.toLocaleString()}</td>
+        <td>${p.shares.toLocaleString()}</td>
+      </tr>`).join('');
     root.innerHTML = `
-      <div class="empty-state">
-        <div class="icon">${icon}</div>
-        <h4>${title}</h4>
-        <p>${desc}</p>
+      ${errorsBanner(res.errors)}
+      <div class="grid grid-3">
+        <div class="card"><h3>ผู้ติดตาม Facebook</h3><div class="stat">${res.totalFans.toLocaleString()}</div><div class="hint">รวม fan_count ทุกเพจที่ตั้งค่าไว้</div></div>
+        <div class="card"><h3>ผู้ติดตาม Instagram</h3><div class="stat">${res.totalFollowers.toLocaleString()}</div><div class="hint">รวมทุกบัญชี IG Business</div></div>
+        <div class="card"><h3>สาขาที่เชื่อมข้อมูลแล้ว</h3><div class="stat">${res.branchesLoaded}</div><div class="hint">จากทั้งหมด 9 สาขา</div></div>
+      </div>
+      <div class="section-label"><span class="dot"></span>โพสต์ล่าสุด เรียงตามเอนเกจเมนต์</div>
+      <div class="card" style="padding:0;overflow:auto;">
+        <table><thead><tr><th>แพลตฟอร์ม</th><th>สาขา</th><th>ข้อความ</th><th>Like</th><th>Comment</th><th>Share</th></tr></thead>
+        <tbody>${postsRows || '<tr><td colspan="6">ยังไม่มีโพสต์</td></tr>'}</tbody></table>
       </div>`;
-  }).catch(() => {
-    root.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h4>เชื่อมต่อไม่สำเร็จ</h4><p>ลองรีเฟรชหน้าอีกครั้ง</p></div>`;
+  }).catch(() => { root.innerHTML = errorStateHtml(); });
+}
+
+// ---------- Ads / Campaigns ----------
+
+function renderAds(root) { renderAdsInsights(root, 'getAds', false); }
+function renderCampaigns(root) { renderAdsInsights(root, 'getCampaigns', true); }
+
+function renderAdsInsights(root, action, byCampaign) {
+  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api(action, { token, branch: currentBranch }).then(res => {
+    if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
+    if (!res.ready) { root.innerHTML = emptyStateHtml('📣', 'ยังไม่เชื่อมข้อมูลโฆษณา', res.reason || 'ตั้งค่า Ad Account ในหน้าตั้งค่า Meta API ก่อน'); return; }
+    const rows = res.rows.map(r => `
+      <tr>
+        <td>${r.branch}</td>
+        ${byCampaign ? `<td>${r.campaign}</td>` : ''}
+        <td>฿${r.spend.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+        <td>${r.impressions.toLocaleString()}</td>
+        <td>${r.clicks.toLocaleString()}</td>
+        <td>฿${r.cpc.toFixed(2)}</td>
+        <td>${r.results !== null ? r.results.toLocaleString() : '—'}</td>
+        <td>${r.roas !== null ? r.roas.toFixed(1) + 'x' : '—'}</td>
+      </tr>`).join('');
+    root.innerHTML = `
+      ${errorsBanner(res.errors)}
+      <div class="grid grid-3">
+        <div class="card"><h3>ยอดใช้จ่ายรวม (30 วัน)</h3><div class="stat">฿${res.totalSpend.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
+        <div class="card"><h3>Impressions รวม</h3><div class="stat">${res.totalImpressions.toLocaleString()}</div></div>
+        <div class="card"><h3>Clicks รวม</h3><div class="stat">${res.totalClicks.toLocaleString()}</div></div>
+      </div>
+      <div class="section-label"><span class="dot"></span>${byCampaign ? 'แยกตามแคมเปญ' : 'แยกตามสาขา'}</div>
+      <div class="card" style="padding:0;overflow:auto;">
+        <table><thead><tr><th>สาขา</th>${byCampaign ? '<th>แคมเปญ</th>' : ''}<th>ใช้จ่าย</th><th>Impressions</th><th>Clicks</th><th>CPC</th><th>ผลลัพธ์</th><th>ROAS</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8">ไม่มีข้อมูลในช่วง 30 วันล่าสุด</td></tr>'}</tbody></table>
+      </div>`;
+  }).catch(() => { root.innerHTML = errorStateHtml(); });
+}
+
+// ---------- Competitors ----------
+
+function renderCompetitors(root) {
+  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api('getCompetitors', { token }).then(res => {
+    if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
+    if (!res.ready) { root.innerHTML = emptyStateHtml('🏁', 'ยังไม่ได้ติดตามคู่แข่ง', res.reason || 'เพิ่มรายชื่อคู่แข่งในหน้าตั้งค่า Meta API'); return; }
+    const rows = res.competitors.map(c => `
+      <tr>
+        <td><strong>${c.name}</strong>${c.notes ? `<br><small style="color:var(--ink-soft);">${c.notes}</small>` : ''}</td>
+        <td>${c.fanCount.toLocaleString()}</td>
+        <td>${c.link ? `<a href="${c.link}" target="_blank" style="color:var(--navy-700);">เปิดเพจ</a>` : '—'}</td>
+      </tr>`).join('');
+    root.innerHTML = `
+      ${errorsBanner(res.errors)}
+      <div class="card" style="padding:0;overflow:auto;">
+        <table><thead><tr><th>คู่แข่ง</th><th>ผู้ติดตาม (Facebook)</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>`;
+  }).catch(() => { root.innerHTML = errorStateHtml(); });
+}
+
+// ---------- Trends ----------
+
+function renderTrends(root) {
+  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api('getTrends', { token }).then(res => {
+    if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
+    if (!res.ready) { root.innerHTML = emptyStateHtml('🔥', 'ยังไม่มีแหล่งข่าว/เทรนด์', res.reason || 'เพิ่มแหล่งข่าว RSS ในหน้าตั้งค่า Meta API'); return; }
+    const rows = res.items.map(i => `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="font-size:12px;color:var(--ink-soft);margin-bottom:4px;">${i.source}${i.pubDate ? ' · ' + new Date(i.pubDate).toLocaleDateString('th-TH') : ''}</div>
+        <div style="font-weight:600;">${i.link ? `<a href="${i.link}" target="_blank" style="color:var(--navy-900);">${i.title}</a>` : i.title}</div>
+      </div>`).join('');
+    root.innerHTML = errorsBanner(res.errors) + (rows || emptyStateHtml('🔥', 'ยังไม่มีข่าว', 'ลองรีเฟรชอีกครั้ง'));
+  }).catch(() => { root.innerHTML = errorStateHtml(); });
+}
+
+// ---------- Hooks ----------
+
+function renderHooks(root) {
+  root.innerHTML = `
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      <input id="hookSearch" placeholder="ค้นหา hooks..." style="flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;">
+      <button class="btn btn-gold" onclick="openHookModal()">+ เพิ่ม Hook</button>
+    </div>
+    <div id="hooksList"><div class="empty-state"><p>กำลังโหลด...</p></div></div>`;
+  document.getElementById('hookSearch').addEventListener('input', debounce(() => loadHooks(document.getElementById('hookSearch').value), 300));
+  loadHooks('');
+}
+
+function debounce(fn, ms) { let t; return function() { clearTimeout(t); t = setTimeout(fn, ms); }; }
+
+function loadHooks(query) {
+  api('listHooks', { token, query }).then(res => {
+    const el = document.getElementById('hooksList');
+    if (!res.ok) { el.innerHTML = errorStateHtml(); return; }
+    if (!res.hooks.length) { el.innerHTML = emptyStateHtml('🧠', 'คลัง Hook ยังว่างอยู่', 'เริ่มเพิ่ม Hook ที่ใช้ได้ผลดี หรือดึงจากคอนเทนท์เก่าที่เคยเวิร์ก'); return; }
+    el.innerHTML = `<div class="card" style="padding:0;overflow:auto;">
+      <table><thead><tr><th>Hook</th><th>หมวด</th><th>ใช้ไปแล้ว</th><th></th></tr></thead>
+      <tbody>${res.hooks.map(h => `
+        <tr>
+          <td>${h.Text}</td>
+          <td><span class="badge role-branch">${h.Category}</span></td>
+          <td>${h.UsageCount || 0} ครั้ง</td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-sm" onclick="markHookUsed('${h.ID}')">ใช้แล้ว</button>
+            <button class="btn btn-sm btn-danger" onclick="removeHook('${h.ID}')">ลบ</button>
+          </td>
+        </tr>`).join('')}</tbody></table></div>`;
   });
+}
+
+function openHookModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>เพิ่ม Hook ใหม่</h3>
+      <div class="field"><label>ข้อความ Hook</label><input id="hk_text" placeholder="เช่น เลิกทำ [X] แล้วเริ่มทำ [Y]"></div>
+      <div class="field"><label>หมวด</label><input id="hk_cat" placeholder="เช่น SWAP, BUILD, CLAIM"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="this.closest('.modal-backdrop').remove()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitHook()">บันทึก</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function submitHook() {
+  api('addHook', { token, hook: { text: document.getElementById('hk_text').value.trim(), category: document.getElementById('hk_cat').value.trim() } }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    document.querySelector('.modal-backdrop').remove();
+    toast('เพิ่ม Hook แล้ว');
+    loadHooks('');
+  });
+}
+function markHookUsed(id) { api('useHook', { token, id }).then(() => loadHooks(document.getElementById('hookSearch').value)); }
+function removeHook(id) { api('deleteHook', { token, id }).then(() => loadHooks(document.getElementById('hookSearch').value)); }
+
+// ---------- Content calendar ----------
+
+function renderCalendar(root) {
+  const now = new Date();
+  const month = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  root.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button class="btn btn-gold" onclick="openCalendarModal()">+ เพิ่มแผนโพสต์</button>
+    </div>
+    <div id="calendarList"><div class="empty-state"><p>กำลังโหลด...</p></div></div>`;
+  loadCalendar(month);
+}
+
+function loadCalendar(month) {
+  api('listCalendar', { token, branch: currentBranch, month }).then(res => {
+    const el = document.getElementById('calendarList');
+    if (!res.ok) { el.innerHTML = errorStateHtml(); return; }
+    if (!res.items.length) { el.innerHTML = emptyStateHtml('🗓️', 'ยังไม่มีแผนโพสต์ในเดือนนี้', 'เริ่มวางแผนโพสต์รายสัปดาห์ต่อแพลตฟอร์มและสาขา'); return; }
+    const statusBadge = { Draft: 'suspended', Scheduled: 'role-dgm', Published: 'active', Failed: 'suspended' };
+    el.innerHTML = `<div class="card" style="padding:0;overflow:auto;">
+      <table><thead><tr><th>เวลาโพสต์</th><th>สาขา</th><th>แพลตฟอร์ม</th><th>แคปชั่น</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody>${res.items.map(i => `
+        <tr>
+          <td>${new Date(i.ScheduledAt).toLocaleString('th-TH')}</td>
+          <td>${i.Branch}</td>
+          <td>${i.Platform}</td>
+          <td>${(i.Caption || '').slice(0, 60)}${i.LastError ? `<br><small style="color:var(--danger);">${i.LastError}</small>` : ''}</td>
+          <td><span class="badge ${statusBadge[i.Status] || 'role-branch'}">${i.Status}</span></td>
+          <td style="white-space:nowrap;">
+            ${i.Status !== 'Published' ? `<button class="btn btn-sm btn-gold" onclick="publishNow('${i.ID}')">เผยแพร่ทันที</button>` : ''}
+            <button class="btn btn-sm btn-danger" onclick="removeCalendarItem('${i.ID}')">ลบ</button>
+          </td>
+        </tr>`).join('')}</tbody></table></div>`;
+  });
+}
+
+function openCalendarModal() {
+  const branchOpts = branches.map(b => `<option value="${b.Code}">${b.NameTH || b.Code}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>เพิ่มแผนโพสต์</h3>
+      <div class="field"><label>สาขา</label><select id="cal_branch">${branchOpts}</select></div>
+      <div class="field"><label>แพลตฟอร์ม</label>
+        <select id="cal_platform"><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option></select>
+      </div>
+      <div class="field"><label>วันเวลาโพสต์</label><input id="cal_time" type="datetime-local"></div>
+      <div class="field"><label>แคปชั่น</label><input id="cal_caption" placeholder="ข้อความโพสต์"></div>
+      <div class="field"><label>ลิงก์รูปภาพ (จำเป็นสำหรับ Instagram)</label><input id="cal_media" placeholder="https://..."></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="this.closest('.modal-backdrop').remove()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitCalendarItem()">บันทึก</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function submitCalendarItem() {
+  const item = {
+    branch: document.getElementById('cal_branch').value,
+    platform: document.getElementById('cal_platform').value,
+    scheduledAt: document.getElementById('cal_time').value,
+    caption: document.getElementById('cal_caption').value.trim(),
+    mediaUrl: document.getElementById('cal_media').value.trim()
+  };
+  api('addCalendarItem', { token, item }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    document.querySelector('.modal-backdrop').remove();
+    toast('เพิ่มแผนโพสต์แล้ว');
+    renderCurrentView();
+  });
+}
+function publishNow(id) {
+  if (!confirm('ยืนยันเผยแพร่โพสต์นี้ตอนนี้เลยหรือไม่?')) return;
+  api('publishCalendarItem', { token, id }).then(res => {
+    if (!res.ok) { toast(res.error, true); }
+    else toast('เผยแพร่โพสต์สำเร็จ');
+    renderCurrentView();
+  });
+}
+function removeCalendarItem(id) {
+  api('deleteCalendarItem', { token, id }).then(() => renderCurrentView());
 }
 
 // ---------- Admin: Users ----------
@@ -326,6 +577,201 @@ function saveBranchName(code) {
     toast('บันทึกชื่อสาขาแล้ว');
   });
 }
+
+// ---------- Admin: Meta API settings ----------
+
+function renderAdminMeta(root) {
+  root.innerHTML = `
+    <div class="section-label"><span class="dot"></span>Meta App (ใช้สำหรับดึงข้อมูลเพจคู่แข่งสาธารณะ)</div>
+    <div class="card" id="appCredCard" style="margin-bottom:22px;"><p>กำลังโหลด...</p></div>
+
+    <div class="section-label"><span class="dot"></span>เชื่อมต่อต่อสาขา (Page / Instagram / Ad Account)</div>
+    <div class="card" style="padding:0;overflow:auto;margin-bottom:22px;">
+      <table>
+        <thead><tr><th>สาขา</th><th>Page ID</th><th>IG Business ID</th><th>Ad Account ID</th><th>สถานะ Token</th><th></th></tr></thead>
+        <tbody id="metaConfigTbody"><tr><td colspan="6">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="section-label"><span class="dot"></span>คู่แข่งที่ติดตาม</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <button class="btn btn-sm btn-gold" onclick="openCompetitorModal()">+ เพิ่มคู่แข่ง</button>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;margin-bottom:22px;">
+      <table><thead><tr><th>ชื่อ</th><th>Page ID</th><th>หมายเหตุ</th><th></th></tr></thead>
+      <tbody id="competitorTbody"><tr><td colspan="4">กำลังโหลด...</td></tr></tbody></table>
+    </div>
+
+    <div class="section-label"><span class="dot"></span>แหล่งข่าว/เทรนด์ (RSS)</div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <button class="btn btn-sm btn-gold" onclick="openTrendSourceModal()">+ เพิ่มแหล่งข่าว</button>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;">
+      <table><thead><tr><th>ชื่อ</th><th>RSS URL</th><th></th></tr></thead>
+      <tbody id="trendSourceTbody"><tr><td colspan="3">กำลังโหลด...</td></tr></tbody></table>
+    </div>
+  `;
+  loadAppCredentials();
+  loadMetaConfigTable();
+  loadCompetitorTable();
+  loadTrendSourceTable();
+}
+
+function loadAppCredentials() {
+  api('admin_getAppCredentials', { token }).then(res => {
+    const el = document.getElementById('appCredCard');
+    if (!res.ok) { el.innerHTML = '<p>โหลดไม่สำเร็จ</p>'; return; }
+    el.innerHTML = `
+      <div class="field"><label>Meta App ID</label><input id="app_id" value="${res.appId || ''}" placeholder="เช่น 1234567890123456"></div>
+      <div class="field"><label>Meta App Secret ${res.hasSecret ? '(ตั้งค่าไว้แล้ว — กรอกใหม่เพื่อเปลี่ยน)' : ''}</label><input id="app_secret" type="password" placeholder="${res.hasSecret ? '••••••••' : 'App Secret'}"></div>
+      <button class="btn btn-gold" onclick="saveAppCred()">บันทึก App Credentials</button>
+      <p class="hint" style="margin-top:10px;">ใช้สำหรับดึงข้อมูลสาธารณะของเพจคู่แข่ง (fan_count) เท่านั้น ไม่เกี่ยวกับ Page Token ของแต่ละสาขา</p>`;
+  });
+}
+function saveAppCred() {
+  const appId = document.getElementById('app_id').value.trim();
+  const appSecret = document.getElementById('app_secret').value.trim();
+  api('admin_saveAppCredentials', { token, appId, appSecret }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    toast('บันทึกแล้ว');
+    loadAppCredentials();
+  });
+}
+
+function loadMetaConfigTable() {
+  api('admin_listMetaConfig', { token }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    const byBranch = {};
+    res.configs.forEach(c => byBranch[c.branch] = c);
+    const rows = branches.map(b => {
+      const c = byBranch[b.Code] || {};
+      return `
+        <tr>
+          <td><strong>${b.Code}</strong></td>
+          <td><input id="mc_page_${b.Code}" value="${c.pageId || ''}" placeholder="Page ID" style="width:130px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;"></td>
+          <td><input id="mc_ig_${b.Code}" value="${c.igBusinessId || ''}" placeholder="IG Business ID" style="width:130px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;"></td>
+          <td><input id="mc_ad_${b.Code}" value="${c.adAccountId || ''}" placeholder="Ad Account ID" style="width:130px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;"></td>
+          <td style="font-size:12px;">Page: ${c.hasPageToken ? '✅ ' + c.pageAccessToken : '—'}<br>Ads: ${c.hasAdToken ? '✅ ' + c.adAccessToken : '—'}</td>
+          <td><button class="btn btn-sm" onclick="openMetaTokenModal('${b.Code}')">แก้ Token</button>
+              <button class="btn btn-sm btn-gold" onclick="saveMetaConfigRow('${b.Code}')">บันทึก</button></td>
+        </tr>`;
+    }).join('');
+    document.getElementById('metaConfigTbody').innerHTML = rows;
+  });
+}
+
+function saveMetaConfigRow(branchCode, tokens) {
+  const config = Object.assign({
+    branch: branchCode,
+    pageId: document.getElementById('mc_page_' + branchCode).value.trim(),
+    igBusinessId: document.getElementById('mc_ig_' + branchCode).value.trim(),
+    adAccountId: document.getElementById('mc_ad_' + branchCode).value.trim()
+  }, tokens || {});
+  api('admin_saveMetaConfig', { token, config }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    toast('บันทึกการตั้งค่าสาขา ' + branchCode + ' แล้ว');
+    loadMetaConfigTable();
+  });
+}
+
+function openMetaTokenModal(branchCode) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>ตั้งค่า Token — สาขา ${branchCode}</h3>
+      <div class="field"><label>Page Access Token (Facebook + Instagram)</label><input id="mt_page_token" type="password" placeholder="กรอกเพื่อตั้งค่าใหม่ (เว้นว่างถ้าไม่เปลี่ยน)"></div>
+      <div class="field"><label>Ad Account Access Token</label><input id="mt_ad_token" type="password" placeholder="กรอกเพื่อตั้งค่าใหม่ (เว้นว่างถ้าไม่เปลี่ยน)"></div>
+      <p class="hint">Token จะถูกเก็บแบบเข้ารหัสในชีทที่จำกัดสิทธิ์การเข้าถึงเท่านั้น</p>
+      <div class="modal-actions">
+        <button class="btn" onclick="this.closest('.modal-backdrop').remove()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitMetaToken('${branchCode}')">บันทึก Token</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function submitMetaToken(branchCode) {
+  const pageAccessToken = document.getElementById('mt_page_token').value.trim();
+  const adAccessToken = document.getElementById('mt_ad_token').value.trim();
+  saveMetaConfigRow(branchCode, { pageAccessToken, adAccessToken });
+  document.querySelector('.modal-backdrop').remove();
+}
+
+function loadCompetitorTable() {
+  api('admin_listCompetitors', { token }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    document.getElementById('competitorTbody').innerHTML = res.competitors.map(c => `
+      <tr><td>${c.Name}</td><td>${c.PageID}</td><td>${c.Notes || ''}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeCompetitor('${c.ID}')">ลบ</button></td></tr>`
+    ).join('') || '<tr><td colspan="4">ยังไม่มีคู่แข่งที่ติดตาม</td></tr>';
+  });
+}
+function openCompetitorModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>เพิ่มคู่แข่ง</h3>
+      <div class="field"><label>ชื่อ</label><input id="cp_name" placeholder="เช่น ตรีเพชรอีซูซุ สาขา..."></div>
+      <div class="field"><label>Facebook Page ID</label><input id="cp_pageid" placeholder="ตัวเลข Page ID หรือ username"></div>
+      <div class="field"><label>หมายเหตุ</label><input id="cp_notes" placeholder="เช่น คู่แข่งในพื้นที่ระยอง"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="this.closest('.modal-backdrop').remove()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitCompetitor()">บันทึก</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function submitCompetitor() {
+  api('admin_addCompetitor', { token, competitor: {
+    name: document.getElementById('cp_name').value.trim(),
+    pageId: document.getElementById('cp_pageid').value.trim(),
+    notes: document.getElementById('cp_notes').value.trim()
+  }}).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    document.querySelector('.modal-backdrop').remove();
+    toast('เพิ่มคู่แข่งแล้ว');
+    loadCompetitorTable();
+  });
+}
+function removeCompetitor(id) { api('admin_deleteCompetitor', { token, id }).then(() => loadCompetitorTable()); }
+
+function loadTrendSourceTable() {
+  api('admin_listTrendSources', { token }).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    document.getElementById('trendSourceTbody').innerHTML = res.sources.map(s => `
+      <tr><td>${s.Name}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.RSSUrl}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeTrendSource('${s.ID}')">ลบ</button></td></tr>`
+    ).join('') || '<tr><td colspan="3">ยังไม่มีแหล่งข่าว</td></tr>';
+  });
+}
+function openTrendSourceModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>เพิ่มแหล่งข่าว RSS</h3>
+      <div class="field"><label>ชื่อแหล่งข่าว</label><input id="ts_name" placeholder="เช่น Headlight Magazine"></div>
+      <div class="field"><label>RSS Feed URL</label><input id="ts_url" placeholder="https://.../feed"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="this.closest('.modal-backdrop').remove()">ยกเลิก</button>
+        <button class="btn btn-gold" onclick="submitTrendSource()">บันทึก</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+function submitTrendSource() {
+  api('admin_addTrendSource', { token, source: {
+    name: document.getElementById('ts_name').value.trim(),
+    rssUrl: document.getElementById('ts_url').value.trim()
+  }}).then(res => {
+    if (!res.ok) { toast(res.error, true); return; }
+    document.querySelector('.modal-backdrop').remove();
+    toast('เพิ่มแหล่งข่าวแล้ว');
+    loadTrendSourceTable();
+  });
+}
+function removeTrendSource(id) { api('admin_deleteTrendSource', { token, id }).then(() => loadTrendSourceTable()); }
 
 init();
 </script>
