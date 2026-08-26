@@ -199,7 +199,11 @@ function errorsBanner(errors) {
 
 function renderAnalytics(root) {
   root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
-  api('getAnalytics', { token, branch: currentBranch }).then(res => {
+  loadAnalytics(false);
+}
+function loadAnalytics(refresh) {
+  const root = document.getElementById('viewRoot');
+  api('getAnalytics', { token, branch: currentBranch, refresh }).then(res => {
     if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
     if (!res.ready) { root.innerHTML = emptyStateHtml('📈', 'ยังไม่เชื่อมข้อมูล Analytics', res.reason || 'เชื่อมต่อ Facebook/Instagram ในหน้าตั้งค่า Meta API ก่อน'); return; }
     const postsRows = res.topPosts.map(p => `
@@ -212,6 +216,7 @@ function renderAnalytics(root) {
         <td>${p.shares.toLocaleString()}</td>
       </tr>`).join('');
     root.innerHTML = `
+      ${cacheNotice(res.cached, 'loadAnalytics')}
       ${errorsBanner(res.errors)}
       <div class="grid grid-3">
         <div class="card"><h3>ผู้ติดตาม Facebook</h3><div class="stat">${res.totalFans.toLocaleString()}</div><div class="hint">รวม fan_count ทุกเพจที่ตั้งค่าไว้</div></div>
@@ -226,14 +231,23 @@ function renderAnalytics(root) {
   }).catch(() => { root.innerHTML = errorStateHtml(); });
 }
 
+function cacheNotice(isCached, refreshFnName) {
+  if (!isCached) return '';
+  return `<div class="card" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;background:#f6f9fd;">
+    <span style="font-size:13px;color:var(--ink-soft);">📦 แสดงข้อมูลที่แคชไว้ (อัปเดตล่าสุดไม่เกิน 10-15 นาทีที่แล้ว) เพื่อให้โหลดเร็วขึ้น</span>
+    <button class="btn btn-sm" onclick="${refreshFnName}(true)">🔄 รีเฟรชข้อมูลล่าสุด</button>
+  </div>`;
+}
+
 // ---------- Ads / Campaigns ----------
 
-function renderAds(root) { renderAdsInsights(root, 'getAds', false); }
-function renderCampaigns(root) { renderAdsInsights(root, 'getCampaigns', true); }
+function renderAds(root) { loadAdsInsights('getAds', false, false); }
+function renderCampaigns(root) { loadAdsInsights('getCampaigns', true, false); }
 
-function renderAdsInsights(root, action, byCampaign) {
-  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
-  api(action, { token, branch: currentBranch }).then(res => {
+function loadAdsInsights(action, byCampaign, refresh) {
+  const root = document.getElementById('viewRoot');
+  if (!refresh) root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api(action, { token, branch: currentBranch, refresh }).then(res => {
     if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
     if (!res.ready) { root.innerHTML = emptyStateHtml('📣', 'ยังไม่เชื่อมข้อมูลโฆษณา', res.reason || 'ตั้งค่า Ad Account ในหน้าตั้งค่า Meta API ก่อน'); return; }
     const rows = res.rows.map(r => `
@@ -247,7 +261,9 @@ function renderAdsInsights(root, action, byCampaign) {
         <td>${r.results !== null ? r.results.toLocaleString() : '—'}</td>
         <td>${r.roas !== null ? r.roas.toFixed(1) + 'x' : '—'}</td>
       </tr>`).join('');
+    const refreshFn = byCampaign ? 'refreshCampaigns' : 'refreshAds';
     root.innerHTML = `
+      ${cacheNotice(res.cached, refreshFn)}
       ${errorsBanner(res.errors)}
       <div class="grid grid-3">
         <div class="card"><h3>ยอดใช้จ่ายรวม (30 วัน)</h3><div class="stat">฿${res.totalSpend.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
@@ -261,12 +277,16 @@ function renderAdsInsights(root, action, byCampaign) {
       </div>`;
   }).catch(() => { root.innerHTML = errorStateHtml(); });
 }
+function refreshAds() { loadAdsInsights('getAds', false, true); }
+function refreshCampaigns() { loadAdsInsights('getCampaigns', true, true); }
 
 // ---------- Competitors ----------
 
-function renderCompetitors(root) {
-  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
-  api('getCompetitors', { token }).then(res => {
+function renderCompetitors(root) { loadCompetitors(false); }
+function loadCompetitors(refresh) {
+  const root = document.getElementById('viewRoot');
+  if (!refresh) root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api('getCompetitors', { token, refresh }).then(res => {
     if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
     if (!res.ready) { root.innerHTML = emptyStateHtml('🏁', 'ยังไม่ได้ติดตามคู่แข่ง', res.reason || 'เพิ่มรายชื่อคู่แข่งในหน้าตั้งค่า Meta API'); return; }
     const rows = res.competitors.map(c => `
@@ -276,6 +296,7 @@ function renderCompetitors(root) {
         <td>${c.link ? `<a href="${c.link}" target="_blank" style="color:var(--navy-700);">เปิดเพจ</a>` : '—'}</td>
       </tr>`).join('');
     root.innerHTML = `
+      ${cacheNotice(res.cached, 'loadCompetitors')}
       ${errorsBanner(res.errors)}
       <div class="card" style="padding:0;overflow:auto;">
         <table><thead><tr><th>คู่แข่ง</th><th>ผู้ติดตาม (Facebook)</th><th></th></tr></thead>
@@ -286,9 +307,11 @@ function renderCompetitors(root) {
 
 // ---------- Trends ----------
 
-function renderTrends(root) {
-  root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
-  api('getTrends', { token }).then(res => {
+function renderTrends(root) { loadTrends(false); }
+function loadTrends(refresh) {
+  const root = document.getElementById('viewRoot');
+  if (!refresh) root.innerHTML = '<div class="empty-state"><p>กำลังโหลด...</p></div>';
+  api('getTrends', { token, refresh }).then(res => {
     if (!res.ok) { root.innerHTML = errorStateHtml(); return; }
     if (!res.ready) { root.innerHTML = emptyStateHtml('🔥', 'ยังไม่มีแหล่งข่าว/เทรนด์', res.reason || 'เพิ่มแหล่งข่าว RSS ในหน้าตั้งค่า Meta API'); return; }
     const rows = res.items.map(i => `
@@ -296,7 +319,7 @@ function renderTrends(root) {
         <div style="font-size:12px;color:var(--ink-soft);margin-bottom:4px;">${i.source}${i.pubDate ? ' · ' + new Date(i.pubDate).toLocaleDateString('th-TH') : ''}</div>
         <div style="font-weight:600;">${i.link ? `<a href="${i.link}" target="_blank" style="color:var(--navy-900);">${i.title}</a>` : i.title}</div>
       </div>`).join('');
-    root.innerHTML = errorsBanner(res.errors) + (rows || emptyStateHtml('🔥', 'ยังไม่มีข่าว', 'ลองรีเฟรชอีกครั้ง'));
+    root.innerHTML = cacheNotice(res.cached, 'loadTrends') + errorsBanner(res.errors) + (rows || emptyStateHtml('🔥', 'ยังไม่มีข่าว', 'ลองรีเฟรชอีกครั้ง'));
   }).catch(() => { root.innerHTML = errorStateHtml(); });
 }
 
